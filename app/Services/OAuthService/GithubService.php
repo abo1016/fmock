@@ -6,11 +6,13 @@
  * Date: 2019/4/23
  * Time: 19:48
  */
+
 namespace App\Services\OAuthService;
 
 use App\Models\User;
 use GuzzleHttp\Client;
 use App\Services\Service;
+use App\Services\FileService;
 use Illuminate\Http\Response;
 
 class GithubService extends Service
@@ -115,12 +117,12 @@ class GithubService extends Service
                 // 根据GitHub创建用户
                 $uuid = self::uuid('user-');
                 $user = User::create([
-                    'name' => self::uuid('github-' . $githubUserInfo->name),
+                    'name' => self::uuid($githubUserInfo->name . '-'),
                     'password' => bcrypt(''),
                     'uuid' => $uuid,
                     'github_id' => $githubUserInfo->id,
                     'github' => $githubUserInfo->login,
-                    'avatar' => $githubUserInfo->avatar_url,
+                    'avatar' => FileService::saveOriginAvatar($uuid, $githubUserInfo->avatar_url),
                 ]);
                 $token = $user->createToken(env('APP_NAME'))->accessToken;
             }

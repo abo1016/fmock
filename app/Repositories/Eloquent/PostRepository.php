@@ -6,6 +6,7 @@
  * Date: 2018/8/25
  * Time: 15:01
  */
+
 namespace App\Repositories\Eloquent;
 
 class PostRepository extends Repository
@@ -34,7 +35,7 @@ class PostRepository extends Repository
     public function getNewPost()
     {
         return $this->model::with('user')
-            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'follow_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
+            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'collect_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
             ->where('deleted', 'none')
             ->orderByDesc('created_at')
             ->paginate(env('PER_PAGE', 10));
@@ -53,7 +54,7 @@ class PostRepository extends Repository
     public function getFavoritePost($limitDate)
     {
         return $this->model::with('user')
-            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'follow_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
+            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'collect_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
             ->where('deleted', 'none')
             ->where('created_at', '>=', $limitDate)
             ->orderByDesc('like_num')
@@ -73,7 +74,7 @@ class PostRepository extends Repository
     public function getPostByType($type)
     {
         return $this->model::with('user')
-            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'follow_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
+            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'collect_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
             ->where('deleted', 'none')
             ->where('type', $type)
             ->orderByDesc('created_at')
@@ -109,7 +110,7 @@ class PostRepository extends Repository
     public function getPostsByUserId($userId)
     {
         return $this->model::with('user')
-            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'follow_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
+            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'collect_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
             ->where('deleted', 'none')
             ->where('user_id', $userId)
             ->orderByDesc('created_at')
@@ -129,7 +130,7 @@ class PostRepository extends Repository
     public function getResourcesByUserIdArr($userIdArr)
     {
         return $this->model::with('user')
-            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'follow_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
+            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'type', 'collect_num', 'comment_num', 'like_num', 'dislike_num', 'created_at')
             ->where('deleted', 'none')
             ->whereIn('user_id', $userIdArr)
             ->orderByDesc('created_at')

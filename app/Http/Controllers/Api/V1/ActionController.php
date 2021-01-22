@@ -7,6 +7,7 @@
  * User: z00455118
  * Date: 2018/9/19
  */
+
 namespace App\Http\Controllers\Api\V1;
 
 use Illuminate\Http\Request;
@@ -42,10 +43,10 @@ class ActionController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getMyFollowed($type)
+    public function getMyCollected($type)
     {
         if (in_array($type, $this->type)) {
-            return $this->actionService->getMyFollowed($type);
+            return $this->actionService->getMyCollected($type);
         } else {
             return response()->json(
                 ['message' => __('app.normal_param_err')],
@@ -55,7 +56,7 @@ class ActionController extends Controller
     }
 
     /**
-     * 关注文章、回答、视频
+     * 关注（收藏）文章、回答、视频
      *
      * @Author huaixiu.zhen
      * http://litblc.com
@@ -64,7 +65,7 @@ class ActionController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function followed(Request $request)
+    public function collected(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'resource_uuid' => 'required',
@@ -80,7 +81,7 @@ class ActionController extends Controller
                 Response::HTTP_BAD_REQUEST
             );
         } else {
-            return $this->actionService->follow($request->get('type'), $request->get('resource_uuid'));
+            return $this->actionService->collect($request->get('type'), $request->get('resource_uuid'));
         }
     }
 
@@ -95,10 +96,10 @@ class ActionController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function unFollow($type, $uuid)
+    public function unCollect($type, $uuid)
     {
         if (in_array($type, $this->type)) {
-            return $this->actionService->unFollow($type, $uuid);
+            return $this->actionService->unCollect($type, $uuid);
         } else {
             return response()->json(
                 ['message' => __('app.normal_param_err')],
@@ -242,6 +243,48 @@ class ActionController extends Controller
     public function statusAnswer($uuid)
     {
         return $this->actionService->status($uuid, 'answer');
+    }
+
+    /**
+     * 赞、取消赞(视频)
+     * author shyZhen <huaixiu.zhen@gmail.com>
+     * https://www.litblc.com
+     *
+     * @param $uuid
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function likeVideo($uuid)
+    {
+        return $this->actionService->userAction($uuid, 'like', 'video');
+    }
+
+    /**
+     * 踩、取消踩(回答)
+     *
+     * @Author huaixiu.zhen
+     * http://litblc.com
+     *
+     * @param $uuid
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function dislikeVideo($uuid)
+    {
+        return $this->actionService->userAction($uuid, 'dislike', 'video');
+    }
+
+    /**
+     * author shyZhen <huaixiu.zhen@gmail.com>
+     * https://www.litblc.com
+     *
+     * @param $uuid
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function statusVideo($uuid)
+    {
+        return $this->actionService->status($uuid, 'video');
     }
 
     /**

@@ -33,6 +33,12 @@ Route::prefix('V1')->namespace('Api\V1')->group(function () {
 
     // 首页文章列表
     Route::get('posts', 'PostController@getAllPosts');
+
+    // 第三方回调
+    Route::prefix('callback')->group(function () {
+        // 七牛转码
+        Route::post('qiniu', 'CallbackController@qiniu');
+    });
 });
 
 // need access_token
@@ -70,6 +76,11 @@ Route::prefix('V1')->namespace('Api\V1')->middleware(['auth:api'])->group(functi
     Route::post('dislike/answer/{uuid}', 'ActionController@dislikeAnswer');
     Route::get('status/answer/{uuid}', 'ActionController@statusAnswer');
 
+    // 视频 动作状态查询
+    Route::post('like/video/{uuid}', 'ActionController@likeVideo');
+    Route::post('dislike/video/{uuid}', 'ActionController@dislikeVideo');
+    Route::get('status/video/{uuid}', 'ActionController@statusVideo');
+
     // 评论
     Route::get('comment/{type}/{postUuid}/{sort?}', 'CommentController@getCommentByPostUuid');
     Route::post('comment', 'CommentController@createComment');
@@ -88,10 +99,10 @@ Route::prefix('V1')->namespace('Api\V1')->middleware(['auth:api'])->group(functi
     Route::get('user/comments/{userUuid}', 'CommentController@userComment');     // 某用户发布的所有评论(包括自己)
     Route::get('user/posts/{userUuid}', 'PostController@userPost');              // 某用户发布的所有文章(包括自己)
     Route::get('user/answers/{userUuid}', 'AnswerController@userAnswer');        // 某用户发布的所有（回答）文章(包括自己)
-    // 关注（搜藏、点红心）的文章、回答 入口在个人中心九宫格中
-    Route::get('collection/{type}', 'ActionController@getMyFollowed');
-    Route::post('collection', 'ActionController@followed');
-    Route::delete('collection/{type}/{uuid}', 'ActionController@unFollow');
+    // 关注（收藏、点红心）的文章、回答 入口在个人中心九宫格中
+    Route::get('collection/{type}', 'ActionController@getMyCollected');
+    Route::post('collection', 'ActionController@collected');
+    Route::delete('collection/{type}/{uuid}', 'ActionController@unCollect');
 
     // 关注、取关某人
     Route::post('follow/{userUuid}', 'UserController@follow');
@@ -101,4 +112,11 @@ Route::prefix('V1')->namespace('Api\V1')->middleware(['auth:api'])->group(functi
 
     // 我的关注（与我相关），我关注的朋友发的动态
     Route::get('track/{type}', 'ActionController@getTrack');
+
+    // 视频相关
+    Route::prefix('video')->group(function () {
+        // 轮询转码结果
+        Route::get('transcode/{uuid}', 'VideoController@ajaxQueryTranscode');
+        Route::put('item/{uuid}', 'VideoController@updateVideoItem');
+    });
 });

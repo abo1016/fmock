@@ -4,6 +4,7 @@
  * http://litblc.com
  * User: huaixiu.zhen
  */
+
 namespace App\Services;
 
 use Illuminate\Http\Response;
@@ -13,7 +14,10 @@ use App\Repositories\Eloquent\UserRepository;
 use App\Repositories\Eloquent\VideoRepository;
 use App\Repositories\Eloquent\AnswerRepository;
 use App\Repositories\Eloquent\CommentRepository;
+use App\Repositories\Eloquent\PostsFollowRepository;
 use App\Repositories\Eloquent\UsersFollowRepository;
+use App\Repositories\Eloquent\VideosFollowRepository;
+use App\Repositories\Eloquent\AnswersFollowRepository;
 use App\Repositories\Eloquent\PostsCommentsLikeRepository;
 
 class ActionService extends Service
@@ -30,6 +34,12 @@ class ActionService extends Service
 
     private $usersFollowRepository;
 
+    private $postsFollowRepository;
+
+    private $videosFollowRepository;
+
+    private $answersFollowRepository;
+
     private $postsCommentsLikeRepository;
 
     /**
@@ -41,6 +51,9 @@ class ActionService extends Service
      * @param AnswerRepository            $answerRepository
      * @param CommentRepository           $commentRepository
      * @param UsersFollowRepository       $usersFollowRepository
+     * @param PostsFollowRepository       $postsFollowRepository
+     * @param VideosFollowRepository      $videosFollowRepository
+     * @param AnswersFollowRepository     $answersFollowRepository
      * @param PostsCommentsLikeRepository $postsCommentsLikeRepository
      */
     public function __construct(
@@ -50,6 +63,9 @@ class ActionService extends Service
         AnswerRepository $answerRepository,
         CommentRepository $commentRepository,
         UsersFollowRepository $usersFollowRepository,
+        PostsFollowRepository $postsFollowRepository,
+        VideosFollowRepository $videosFollowRepository,
+        AnswersFollowRepository $answersFollowRepository,
         PostsCommentsLikeRepository $postsCommentsLikeRepository
     ) {
         $this->userRepository = $userRepository;
@@ -58,6 +74,9 @@ class ActionService extends Service
         $this->answerRepository = $answerRepository;
         $this->commentRepository = $commentRepository;
         $this->usersFollowRepository = $usersFollowRepository;
+        $this->postsFollowRepository = $postsFollowRepository;
+        $this->videosFollowRepository = $videosFollowRepository;
+        $this->answersFollowRepository = $answersFollowRepository;
         $this->postsCommentsLikeRepository = $postsCommentsLikeRepository;
     }
 
@@ -71,9 +90,9 @@ class ActionService extends Service
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getMyFollowed($type)
+    public function getMyCollected($type)
     {
-        $responses = $this->userRepository->getMyFollowed($type);
+        $responses = $this->userRepository->getMyCollected($type);
 
         if ($responses->count()) {
             foreach ($responses as $post) {
@@ -94,7 +113,7 @@ class ActionService extends Service
     }
 
     /**
-     * 关注操作 并更新follow_num 表字段
+     * 收藏文章操作 并更新collect_num 表字段
      *
      * @Author huaixiu.zhen
      * http://litblc.com
@@ -104,7 +123,7 @@ class ActionService extends Service
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function follow($type, $uuid)
+    public function collect($type, $uuid)
     {
         // postRepository or answerRepository、videoRepository
         $repository = $type . 'Repository';
@@ -112,15 +131,15 @@ class ActionService extends Service
         $post = $this->$repository->findBy('uuid', $uuid);
 
         if ($post) {
-            $follow = $this->userRepository->follow($post->id, $type);
+            $collect = $this->userRepository->collect($post->id, $type);
 
-            if (count($follow['attached'])) {
-                $post->follow_num += 1;
+            if (count($collect['attached'])) {
+                $post->collect_num += 1;
                 $post->save();
             }
 
             return response()->json(
-                ['message' => __('app.follow') . __('app.success')],
+                ['message' => __('app.collect') . __('app.success')],
                 Response::HTTP_OK
             );
         } else {
@@ -132,7 +151,7 @@ class ActionService extends Service
     }
 
     /**
-     * 取消关注 并更新follow_num 表字段
+     * 取消收藏 并更新collect_num 表字段
      *
      * @Author huaixiu.zhen
      * http://litblc.com
@@ -142,7 +161,7 @@ class ActionService extends Service
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function unFollow($type, $uuid)
+    public function unCollect($type, $uuid)
     {
         // postRepository or answerRepository、videoRepository
         $repository = $type . 'Repository';
@@ -150,13 +169,13 @@ class ActionService extends Service
         $post = $this->$repository->findBy('uuid', $uuid);
 
         if ($post) {
-            if ($this->userRepository->unFollow($post->id, $type)) {
-                $post->follow_num > 0 && $post->follow_num -= 1;
+            if ($this->userRepository->unCollect($post->id, $type)) {
+                $post->collect_num > 0 && $post->collect_num -= 1;
                 $post->save();
             }
 
             return response()->json(
-                ['message' => __('app.cancel') . __('app.follow') . __('app.success')],
+                ['message' => __('app.cancel') . __('app.collect') . __('app.success')],
                 Response::HTTP_OK
             );
         } else {
@@ -191,8 +210,11 @@ class ActionService extends Service
             $resource = $this->commentRepository->find($resourceId);
         } elseif ($resourceType === 'answer') {
             $resource = $this->answerRepository->findBy('uuid', $resourceId);
+        } elseif ($resourceType === 'video') {
+            $resource = $this->videoRepository->findBy('uuid', $resourceId);
         }
 
+        // 目前记录赞和踩都在一张表中，后期可考虑分成单表
         if ($resource) {
             $pivot = $this->postsCommentsLikeRepository->hasAction($resource->id, $type, $resourceType);
 
@@ -236,20 +258,43 @@ class ActionService extends Service
     public function status($resourceId, $resourceType)
     {
         $resource = '';
+        $collected = false;
         if ($resourceType === 'post') {
             $resource = $this->postRepository->findBy('uuid', $resourceId, ['id']);
         } elseif ($resourceType === 'comment') {
             $resource = $this->commentRepository->find($resourceId, ['id']);
         } elseif ($resourceType === 'answer') {
-            $resource = $this->answerRepository->findBy('uuid', $resourceId);
+            $resource = $this->answerRepository->findBy('uuid', $resourceId, ['id']);
+        } elseif ($resourceType === 'video') {
+            $resource = $this->videoRepository->findBy('uuid', $resourceId, ['id']);
         }
 
         if ($resource) {
             $like = $this->postsCommentsLikeRepository->hasAction($resource->id, 'like', $resourceType);
             $dislike = $this->postsCommentsLikeRepository->hasAction($resource->id, 'dislike', $resourceType);
 
+            // 查询文章、回答、视频时候的搜藏状态
+            if (in_array($resourceType, ['post', 'video', 'answer'])) {
+                $userId = Auth::id();
+
+                // PostsFollowRepository answersFollowRepository videosFollowRepository
+                $repository = $resourceType . 's' . 'FollowRepository';
+                $collected = $this->$repository
+                    ->model()::where([
+                        'user_id' => $userId,
+                        'resource_id' => $resource->id,
+                    ])
+                    ->first();
+            }
+
             return response()->json(
-                ['data' => ['like' => $like ? true : false, 'dislike' => $dislike ? true : false]],
+                ['data' =>
+                    [
+                        'liked' => $like ? true : false,
+                        'disliked' => $dislike ? true : false,
+                        'collected' => $collected ? true : false,
+                    ],
+                ],
                 Response::HTTP_OK
             );
         } else {

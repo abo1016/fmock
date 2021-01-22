@@ -8,6 +8,7 @@
  * Date: 2019/5/6
  * Time: 20:39
  */
+
 namespace App\Services\BaseService;
 
 use Qiniu\Auth;
@@ -75,7 +76,7 @@ class QiniuService extends Service
     }
 
     /**
-     * 上传视频到七牛 切片、水印等操作
+     * 上传视频到七牛 切片、水印等操作(主动)
      *
      * author shyZhen <huaixiu.zhen@gmail.com>
      * https://www.litblc.com

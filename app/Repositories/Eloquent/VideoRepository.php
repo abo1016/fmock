@@ -6,6 +6,7 @@
  * Date: 2018/8/25
  * Time: 15:01
  */
+
 namespace App\Repositories\Eloquent;
 
 class VideoRepository extends Repository
@@ -36,7 +37,7 @@ class VideoRepository extends Repository
     public function getResourcesByUserIdArr($userIdArr)
     {
         return $this->model::with('user')
-            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'follow_num', 'comment_num', 'created_at')
+            ->select('id', 'user_id', 'uuid', 'title', 'summary', 'poster', 'collect_num', 'comment_num', 'created_at')
             ->where('deleted', 'none')
             ->whereIn('user_id', $userIdArr)
             ->orderByDesc('created_at')

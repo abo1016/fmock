@@ -6,6 +6,7 @@
  * Date: 2018/8/21
  * Time: 12:34
  */
+
 namespace App\Services;
 
 use Illuminate\Http\Response;
@@ -84,7 +85,9 @@ class FileService extends Service
             $storagePath = storage_path($filePath);                                        // 生成系统绝对路径
 
             if (!file_exists($storagePath)) {
-                mkdir($storagePath, 0666, true);
+                $old = umask(0);
+                mkdir($storagePath, 0766, true);
+                umask($old);
             }
             $fullName = $storagePath . $imageName;
 
@@ -136,7 +139,9 @@ class FileService extends Service
             $storagePath = storage_path($filePath);                                        // 生成系统绝对路径
 
             if (!file_exists($storagePath)) {
-                mkdir($storagePath, 0666, true);
+                $old = umask(0);
+                mkdir($storagePath, 0766, true);
+                umask($old);
             }
             $fullName = $storagePath . $imageName;
 
@@ -191,7 +196,9 @@ class FileService extends Service
             $storagePath = storage_path($filePath);                                        // 生成系统绝对路径
 
             if (!file_exists($storagePath)) {
-                mkdir($storagePath, 0666, true);
+                $old = umask(0);
+                mkdir($storagePath, 0766, true);
+                umask($old);
             }
 
             $fullName = $storagePath . $videoName;
@@ -211,10 +218,9 @@ class FileService extends Service
                 $this->redisService->setRedis($this->uploadVideoRedisKey . $userId, 'create', 'EX', 90);
 
                 $videoUrl = url('/storage/' . $tmpPath . $videoName);
-                $videoHlsUrl = '';
 
                 // 保存数据入库
-                $video = $this->saveVideo($videoUrl, $videoHlsUrl);
+                $video = $this->saveVideo($tmpPath . $videoName, $videoUrl);
                 if ($video) {
                     return response()->json(
                         ['data' => $video->uuid],
@@ -398,7 +404,7 @@ class FileService extends Service
                 $videoHlsUrl = config('filesystems.qiniu.cdnUrlVideo') . '/' . $result['m3u8'];
 
                 // 保存数据入库
-                $video = $this->saveVideo($videoUrl, $videoHlsUrl);
+                $video = $this->saveVideo($fullName, $videoUrl, $videoHlsUrl);
 
                 if ($video) {
                     return response()->json(
@@ -426,6 +432,156 @@ class FileService extends Service
     }
 
     /**
+     * 新·上传视频到七牛
+     * 只上传,不主动转码,通过七牛配置工作流进行异步转码,callback确认转码成功
+     *
+     * @param $file
+     * @param $savePath
+     * @param string $prefix
+     *
+     * @throws \Exception
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function uploadVideoToQiniuNew($file, $savePath, $prefix = '')
+    {
+        if ($file->isValid()) {
+            $userId = Auth::id();
+
+            $videoName = self::uuid($prefix) . '.' . $file->extension();
+            $fullName = $savePath . '/' . date('Y/m/') . $videoName;
+
+            // 频率限制
+            if ($this->redisService->isRedisExists($this->uploadVideoRedisKey . $userId)) {
+                return response()->json(
+                    ['message' => __('app.action_ttl') . $this->redisService->getRedisTtl($this->uploadVideoRedisKey . $userId) . 's'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY
+                );
+            }
+
+            $result = $this->qiniuService->uploadFile($file->path(), $fullName, env('BucketVideo'));
+
+            if ($result['code'] === 0) {
+
+                // 添加频率限制key
+                $this->redisService->setRedis($this->uploadVideoRedisKey . $userId, 'create', 'EX', 90);
+
+                $videoUrl = config('filesystems.qiniu.cdnUrlVideo') . '/' . $result['data']['key'];
+
+                // 保存数据入库
+                $video = $this->saveVideo($fullName, $videoUrl);
+
+                if ($video) {
+                    return response()->json(
+                        ['data' => $video->uuid],
+                        Response::HTTP_CREATED
+                    );
+                } else {
+                    return response()->json(
+                        ['message' => __('app.try_again')],
+                        Response::HTTP_INTERNAL_SERVER_ERROR
+                    );
+                }
+            }
+
+            return response()->json(
+                ['message' => __('app.upload_file_qiniu_fail')],
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        } else {
+            return response()->json(
+                ['message' => __('app.upload_file_valida_fail')],
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        }
+    }
+
+    /**
+     * 保存远程头像到本地（首次第三方注册的时候需要）
+     * file_get_content 和 file_put_content的太慢了，不推荐使用
+     *
+     * author shyZhen <huaixiu.zhen@gmail.com>
+     * https://www.litblc.com
+     *
+     * @param $uuid  // 用户uuid（生成图片文件名字使用）
+     * @param $uri   // 远程图片地址uri
+     *
+     * @return bool|mixed
+     */
+    public static function saveOriginAvatar($uuid, $uri)
+    {
+        $header = [
+            'User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:45.0) Gecko/20100101 Firefox/45.0',
+            'Accept-Language: zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
+            'Accept-Encoding: gzip, deflate',
+        ];
+
+        $imgBase64Code = '';
+        $curl = curl_init();
+        curl_setopt($curl, CURLOPT_URL, $uri);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($curl, CURLOPT_HTTPHEADER, $header);
+        $dataImg = curl_exec($curl);
+        $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        curl_close($curl);
+        if ($code == 200) {
+            $imgBase64Code = 'data:image/jpeg;base64,' . base64_encode($dataImg);
+        }
+        $img_content = $imgBase64Code;
+
+        if (preg_match('/^(data:\s*image\/(\w+);base64,)/', $img_content, $result)) {
+            $type = $result[2];
+            $avatarPathArr = self::initAvatarPath($uuid, $type);
+
+            if (file_put_contents(
+                $avatarPathArr['save_file'],
+                base64_decode(str_replace($result[1], '', $img_content))
+            )) {
+                return $avatarPathArr['avatar'];
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 设置保存远程头像的保存地址
+     *
+     * author shyZhen <huaixiu.zhen@gmail.com>
+     * https://www.litblc.com
+     *
+     * @param $uuid  // 用户uuid
+     * @param $ext   // 图片后缀
+     *
+     * @return array
+     */
+    private static function initAvatarPath($uuid, $ext)
+    {
+        $tmpPath = 'avatar/' . date('Y/m/');                                           // 与本地保存头像路径一致
+        $filePath = '/app/public/' . $tmpPath;                                         // 定义文件的存储路径
+
+        $imageName = $uuid . '.' . $ext;                                         // 头像名与用户uuid一致
+        $storagePath = storage_path($filePath);                                        // 生成系统绝对路径
+
+        if (!file_exists($storagePath)) {
+            $old = umask(0);
+            mkdir($storagePath, 0766, true);
+            umask($old);
+        }
+        $fullName = $storagePath . $imageName;
+
+        // 刷新本地缓存
+        $flushCdn = '?v=' . time();
+        $imageUrl = url('/storage/' . $tmpPath . $imageName . $flushCdn);
+
+        return [
+            'save_file' => $fullName,
+            'avatar' => $imageUrl,
+        ];
+    }
+
+    /**
      * 图片上传记录
      *
      * @Author huaixiu.zhen
@@ -448,18 +604,22 @@ class FileService extends Service
      * author shyZhen <huaixiu.zhen@gmail.com>
      * https://www.litblc.com
      *
+     * @param $videoName
      * @param $videoUrl
      * @param $videoHlsUrl
+     * @param $videoHlsHdUrl
      *
      * @return mixed
      */
-    private function saveVideo($videoUrl, $videoHlsUrl)
+    private function saveVideo($videoName, $videoUrl, $videoHlsUrl = '', $videoHlsHdUrl = '')
     {
         $video = $this->videoItemRepository->create([
             'uuid' => self::uuid('video-'),  // 禁止使用同样的uuid，防止被人猜到暴露
             'user_id' => Auth::id(),
+            'video_key' => $videoName,
             'url' => $videoUrl,
             'hls_url' => $videoHlsUrl,
+            'hls_hd_url' => $videoHlsHdUrl,
         ]);
 
         return $video;

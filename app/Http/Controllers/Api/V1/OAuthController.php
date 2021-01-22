@@ -6,6 +6,7 @@
  * Date: 2019/4/22
  * Time: 20:31
  */
+
 namespace App\Http\Controllers\Api\V1;
 
 use Illuminate\Http\Request;
@@ -79,6 +80,7 @@ class OAuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'code' => 'required',
+            'user' => 'required',
         ]);
 
         if ($validator->fails()) {
@@ -88,7 +90,8 @@ class OAuthController extends Controller
             );
         } else {
             $response = WechatService::wechatLogin(
-                $request->get('code')
+                $request->get('code'),
+                $request->get('user')
             );
         }
 

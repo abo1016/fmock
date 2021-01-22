@@ -1,4 +1,4 @@
-<p align="center"><img src="https://www.litblc.com/usr/themes/pinghsu/images/favicon.ico"></p>
+<p align="center"><img src="http://m.fmock.com/static/img/FMOCK-LOGO.png"></p>
 <p align="center">
 	<a href="https://github.styleci.io/repos/145133991">
         <img src="https://github.styleci.io/repos/145133991/shield" alt="StyleCI">
@@ -24,18 +24,24 @@ FMock墨客社区。
 
 
 ## Environment
+ > 必要
  - PHP >= 7.2.5
  - Mysql
  - Redis
+ 
+ > 以下为非必要
+ 
  - Nodejs
  - ElasticSearch = 7.4.2
  - ElasticSearch-analysis-ik 7.4.2
+ - RabbitMQ
 
 
 ## Installation
 
- #### 下载代码安装依赖
+ #### 1.下载代码安装依赖
  - `git clone https://github.com/ShyZhen/fmock.git`
+ - 创建项目数据库
  - `copy .env.example .env` and edit .env
  > 除了基本的APP配置、数据库配置、以及redis缓存配置（前四个代码块），仍需配置Smtp 邮箱服务、Sms短信服务、Github OAuth 第三方登录。
  > 根据自己vhost配置 `APP_URL` `CLIENT_URL` `SERVER_URL` `ADMIN_URL`
@@ -43,25 +49,45 @@ FMock墨客社区。
  - composer 全量镜像不稳定，推荐更换`composer config -g repo.packagist composer https://mirrors.aliyun.com/composer/`
  - `composer self-update` && `composer install`
  
- #### 执行初始化安装
+ #### 2. 执行初始化安装
  - `php artisan fmock:install`
  
- #### 权限设置
- - `chmod -R 766 storage/` and `chmod -R 766 bootstrap/cache/` 根据自己实际用户组情况设置777或者766
- - ~~`php artisan queue:work redis --queue=FMock --daemon --quiet --delay=3 --sleep=3 --tries=3`~~
+ #### 3. 权限设置
+ - `chmod -R 766 storage/ && chmod -R 766 bootstrap/cache/` 根据自己实际用户组情况设置777或者766
+ 
+ #### 4.异步、消息队列开启(目前仅有发送短信、邮件封装了redis队列，QueueStart=true时必须执行)
+ - ~~使用redis做队列：`php artisan queue:work redis --queue=FMockTestQueue,sendSmsQueue --daemon --quiet --delay=3 --sleep=3 --tries=3`~~
 
  
 ## ES Quick Use
+ #### Code Info
  - 新建es类并继承抽象类`Base/ElasticSearch`，例如PostElasticSearch
  - 必须实现抽象函数 `createIndex` 和 `getIndexName`，这样就可以完全使用基类中的任意方法（其中createIndex方法仅在es:init中使用）
  - 使用方法参考`Web/TestController@esTest`
-#### ES Init
+ #### ES Init
  - `php artisan es:init`, 该命令将创建文章默认的index,并设置文章默认的mappings
-#### ES observer
+ #### ES observer
  - 需要提前开启env中的ESToObserver
  - 创建Observers，例如`app/Observers/PostObserver.php`
  - 在`app/Providers/ObserversServiceProvider.php`中添加观察者模型,例如`Post::observe(PostObserver::class);`
 
+
+## RabbitMQ Quick Use
+ #### Code Info
+ - 函数类库在`\app\Library\RabbitMQ`下,分别为生成类、消费类、消费回调业务函数
+ #### Consume Bash Start
+ - 启动消费脚本前要确定队列、交换机等存在，可以事先调用一次send：
+ ```php
+    $rabbitMQ = new Publish();
+    $params = ['key1' => 'value1', 'key2' => 'value2', 'action' => 'sms'];
+    print_r($rabbitMQ->send(env('RABBITMQ_QUEUE'), json_encode($params)));
+```
+ - 启动消费脚本命令：
+ ```php
+    php artisan rabbitmq:start
+ ```
+ #### Consume Callback
+ - 启动消费脚本之后，所有的回调逻辑处理函数全部在`app\Library\RabbitMQ\RabbitMQHandle.php`文件中，你只需要更新此处即可
 
 ## API Info
 
@@ -80,7 +106,12 @@ FMock墨客社区。
  - Delta格式富文本编辑器
  - 支持粉丝系统，查看用户关注、粉丝列表等操作，支持redis以及关系型数据库两种存储方式，量小推荐使用数据库
  - 支持ElasticSearch，使用Observer自动插入ES数据
- - 支持短视频上传七牛并切片、添加水印等操作（记得更新最大上传文件限制、最大执行时间）
+ - 支持短视频上传七牛并切片、添加水印等操作（记得更新相关文件上传配置,例如nginx的client_body_temp/client_body_buffer_size 10/client_max_body_size 1024m）
+
+## Other file
+ - 代码分层架构：/tmp/code.jpg
+ - Postman：/tmp/Fmock.postman_collection.json
+ - rp原型：/tmp/fmock.rp
 
 ## API Index
 
@@ -101,6 +132,9 @@ FMock墨客社区。
  - [logout](#logout) | 登出
  
   - [uploadVideo](#upload-video) | 上传视频并入库
+  - [qiniu](#callback-qiniu) | 七牛工作流转码回调
+  - [ajaxQueryTranscode](#ajax-transcode) | 七牛工作流转码回调
+  - [updateVideoItem](#update-video) | 更新视频信息,上传转码后调用
  
  - [getAllPosts](#posts) | 获取首页文章列表
  - [getPostByUuid](#post) | 获取指定文章
@@ -122,15 +156,19 @@ FMock墨客社区。
  
  - [likePost](#like-post) | 赞/取消赞（文章）
  - [dislikePost](#dislike-post) | 踩/取消踩（文章）
- - [statusPost](#status-post) | 查看赞/踩状态（文章）
+ - [statusPost](#status-post) | 查看赞/踩/收藏状态（文章）
  
  - [likeAnswer](#like-answer) | 赞/取消赞（回答）
  - [dislikeAnswer](#dislike-answer) | 踩/取消踩（回答）
- - [statusAnswer](#status-answer) | 查看赞/踩状态（回答）
+ - [statusAnswer](#status-answer) | 查看赞/踩/收藏状态（回答）
  
  - [likeComment](#like-comment) | 赞/取消赞（评论）
  - [dislikeComment](#dislike-comment) | 踩/取消踩（评论）
- - [statusComment](#status-comment) | 查看赞/踩状态（评论）
+ - [statusComment](#status-comment) | 查看赞/踩/收藏状态（评论）
+ 
+ - [likeVideo](#like-video) | 赞/取消赞（视频）
+ - [dislikeVideo](#dislike-video) | 踩/取消踩（视频）
+ - [statusVideo](#status-video) | 查看赞/踩/收藏状态（视频）
  
  - [getCommentByPostUuid](#post-comment) | 获取文章评论
  - [createComment](#create-post-comment) | 创建评论、回复
@@ -162,6 +200,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、403、422、500
  {"message" : <"message">}
+------------------------------
 
 #### register
  - POST `server_url/V1/register`
@@ -181,6 +220,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、401、422
  {"message" : <"message">}
+------------------------------
 
 #### user-check
  - POST `server_url/V1/user-check`
@@ -196,6 +236,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、403
  {"message" : <"message">}
+------------------------------
 
 #### login
  - POST `server_url/V1/login`
@@ -212,6 +253,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、403、422
  {"message" : <"message">}
+------------------------------
 
 #### password-code
  - POST `server_url/V1/password-code`
@@ -227,6 +269,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、403、422、500
  {"message" : <"message">}
+------------------------------
 
 #### password
  - POST `server_url/V1/password`
@@ -245,6 +288,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、401、403、422
  {"message" : <"message">}
+------------------------------
 
 #### me
  - GET `server_url/V1/me`
@@ -260,6 +304,7 @@ FMock墨客社区。
  
  > HTTP/1.1 401
  {"message" : <"message">}
+------------------------------
 
 #### github-login
  - GET `server_url/V1/oauth/github/login`
@@ -275,7 +320,8 @@ FMock墨客社区。
  
  > HTTP/1.1 500
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### user-info
  - GET `server_url/V1/user/{uuid}`
  - 查看用户信息
@@ -290,6 +336,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### post-me
  - POST `server_url/V1/me`
@@ -314,6 +361,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、500
  {"message" : <"message">}
+------------------------------
 
 #### my-name
  - POST `server_url/V1/my-name`
@@ -329,6 +377,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、403、500
  {"message" : <"message">}
+------------------------------
 
 #### upload-image
  - POST `server_url/V1/file/image`
@@ -344,6 +393,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、422
  {"message" : <"message">}
+------------------------------
 
 #### upload-avatar
  - POST `server_url/V1/file/avatar`
@@ -359,6 +409,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、422
  {"message" : <"message">}
+------------------------------
 
 #### logout
  - GET `server_url/V1/logout`
@@ -371,7 +422,8 @@ FMock墨客社区。
  - 返回值
  > HTTP/1.1 200 OK
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### upload-video
  - POST `server_url/V1/file/video`
  - 上传视频，返回uuid
@@ -386,8 +438,49 @@ FMock墨客社区。
  
  > HTTP/1.1 400、422
  {"message" : <"message">}
+ ------------------------------
 
+#### callback-qiniu
+ - POST `server_url/V1/callback/qiniu`
+ > https://developer.qiniu.com/dora/6504/receive-notifications
+ ------------------------------
+
+#### ajax-transcode
+ - GET `server_url/V1/video/transcode/{uuid}`
+ - ajax轮询查询转码结果,通过is_transcode判断成功与否
+ - is_transcode: 0成功、1等待处理、2处理中、3失败
+
+参数 | 必须 | 类型 | 认证 | 长度 | 备注 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| `uuid` | Y | String | Y |  |  |
+
+ - 返回值
+ > HTTP/1.1 200 OK
+ {"data" : <"video-item">}
  
+ > HTTP/1.1 404
+ {"message" : <"message">} 
+ ------------------------------
+ 
+ #### update-video
+ - PUT `server_url/V1/video/item/{uuid}`
+ - 更新视频信息,视频上传转码后续
+ 
+参数 | 必须 | 类型 | 认证 | 长度 | 备注 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| `title` | Y | String | Y | &lt;64 |  |
+| `summary` | Y | String | Y | &lt;80 |  |
+| `poster` | Y | String | Y | &lt;128 |  |
+| `is_free` | Y | Boolean | Y |  | 是否匿名发布 |
+
+ - 返回值
+ > HTTP/1.1 200 OK
+ {"data" : <"video-item">}
+ 
+ > HTTP/1.1 400、404、500
+ {"message" : <"message">}
+  ------------------------------
+
 #### posts
  - GET `server_url/V1/posts`
  - 获取首页文章列表
@@ -404,6 +497,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400
  {"message" : <"message">}
+------------------------------
 
 #### post
  - GET `server_url/V1/post/{uuid}`
@@ -419,6 +513,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### create-post
  - POST `server_url/V1/post`
@@ -439,6 +534,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、422、500
  {"message" : <"message">}
+------------------------------
 
 #### update-post
  - PUT `server_url/V1/post/{uuid}`
@@ -458,6 +554,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、404、500
  {"message" : <"message">}
+------------------------------
 
 #### delete-post
  - DELETE `server_url/V1/post/{uuid}`
@@ -473,7 +570,8 @@ FMock墨客社区。
  
  > HTTP/1.1 404、500
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### answers
  - GET `server_url/V1/answers/{postUuid}/{type?}`
  - 获取某个文章（问题）的回答列表
@@ -491,7 +589,8 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### answer
  - GET `server_url/V1/answer/detail/{uuid}`
  - 获取某个回答的详细信息
@@ -506,7 +605,8 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### create-answer
  - POST `server_url/V1/answer`
  - 写回答
@@ -526,7 +626,8 @@ FMock墨客社区。
  
  > HTTP/1.1 400、404、422、500
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### update-answer
  - PUT `server_url/V1/answer/{uuid}`
  - 修改我的某篇回答
@@ -544,7 +645,8 @@ FMock墨客社区。
  
  > HTTP/1.1 400、404、500
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### delete-answer
  - DELETE `server_url/V1/answer/{uuid}`
  - 删除我的某篇回答
@@ -559,6 +661,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404、500
  {"message" : <"message">}
+------------------------------
 
 #### collections
  - GET `server_url/V1/collection/{type}`
@@ -575,6 +678,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### post-collection
  - POST `server_url/V1/collection`
@@ -591,6 +695,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### delete-collection
  - DELETE `server_url/V1/collection/{type}/{uuid}`
@@ -607,6 +712,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### like-post
  - POST `server_url/V1/like/post/{uuid}`
@@ -622,6 +728,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### dislike-post
  - POST `server_url/V1/dislike/post/{uuid}`
@@ -637,6 +744,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### status-post
  - GET `server_url/V1/status/post/{uuid}`
@@ -652,6 +760,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### like-answer
  - POST `server_url/V1/like/answer/{uuid}`
@@ -667,6 +776,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### dislike-answer
  - POST `server_url/V1/dislike/answer/{uuid}`
@@ -682,6 +792,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### status-answer
  - GET `server_url/V1/status/answer/{uuid}`
@@ -697,7 +808,8 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
- 
+ ------------------------------
+
 #### like-comment
  - POST `server_url/V1/like/comment/{id}`
  - 赞评论,再次请求取消赞（这里url跟着评论的ID,而不是uuid）
@@ -712,6 +824,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### dislike-comment
  - POST `server_url/V1/dislike/comment/{id}`
@@ -727,6 +840,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### status-comment
  - GET `server_url/V1/status/comment/{id}`
@@ -742,6 +856,55 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
+
+#### like-video
+ - POST `server_url/V1/like/video/{uuid}`
+ - 赞视频,再次请求取消赞
+
+参数 | 必须 | 类型 | 认证 | 长度 | 备注 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| `uuid` | Y |  | Y |  |  |
+
+ - 返回值
+ > HTTP/1.1 200 OK
+ {"message" : <"message">}
+ 
+ > HTTP/1.1 404
+ {"message" : <"message">}
+------------------------------
+
+#### dislike-video
+ - POST `server_url/V1/dislike/video/{uuid}`
+ - 踩视频,再次请求取消踩
+
+参数 | 必须 | 类型 | 认证 | 长度 | 备注 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| `uuid` | Y |  | Y |  |  |
+
+ - 返回值
+ > HTTP/1.1 200 OK
+ {"message" : <"message">}
+ 
+ > HTTP/1.1 404
+ {"message" : <"message">}
+------------------------------
+
+#### status-video
+ - GET `server_url/V1/status/video/{uuid}`
+ - 查询状态
+
+参数 | 必须 | 类型 | 认证 | 长度 | 备注 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| 无 |  |  | Y |  |  |
+
+ - 返回值
+ > HTTP/1.1 200 OK
+ {"data" : <"data">}
+ 
+ > HTTP/1.1 404
+ {"message" : <"message">}
+------------------------------
 
 #### post-comment
  - GET `server_url/V1/comment/{type}/{postUuid}/{sort?}`
@@ -759,6 +922,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### create-post-comment
  - POST `server_url/V1/comment`
@@ -777,6 +941,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400、404、422、500
  {"message" : <"message">}
+------------------------------
 
 #### delete-post-comment
  - DELETE `server_url/V1/comment/{id}`
@@ -792,6 +957,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404、500
  {"message" : <"message">}
+------------------------------
 
 #### user-comments
  - GET `server_url/V1/user/comments/{userUuid}`
@@ -808,6 +974,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### user-posts
  - GET `server_url/V1/user/posts/{userUuid}`
@@ -824,6 +991,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">}
+------------------------------
 
 #### user-answers
  - GET `server_url/V1/user/answers/{userUuid}`
@@ -840,9 +1008,7 @@ FMock墨客社区。
   
   > HTTP/1.1 404
   {"message" : <"message">}
-
-
-
+------------------------------
 
 #### follow-user
  - POST `server_url/V1/follow/{userUuid}`
@@ -858,7 +1024,8 @@ FMock墨客社区。
   
   > HTTP/1.1 404、422
   {"message" : <"message">}
-  
+  ------------------------------
+
 #### follow-status-user
  - GET `server_url/V1/follow/status/{userUuid}`
  - 查询对某个用户的关注、互粉状态
@@ -873,7 +1040,8 @@ FMock墨客社区。
  
  > HTTP/1.1 404、422
  {"message" : <"message">} 
- 
+ ------------------------------
+
 #### follows-list
  - GET `server_url/V1/follows/list/{userUuid}`
  - 查询某个用户的关注列表（包括我自己）
@@ -889,6 +1057,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">} 
+------------------------------
 
 #### fans-list
  - GET `server_url/V1/fans/list/{userUuid}`
@@ -905,6 +1074,7 @@ FMock墨客社区。
  
  > HTTP/1.1 404
  {"message" : <"message">} 
+------------------------------
 
 #### track-list
  - GET `server_url/V1/track/{type}`
@@ -921,6 +1091,7 @@ FMock墨客社区。
  
  > HTTP/1.1 400
  {"message" : <"message">} 
+------------------------------
 
 ## Security Vulnerabilities
 

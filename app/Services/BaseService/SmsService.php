@@ -8,6 +8,7 @@
  * Date: 2019/4/19
  * Time: 20:39
  */
+
 namespace App\Services\BaseService;
 
 use App\Services\Service;
@@ -46,6 +47,7 @@ class SmsService extends Service
                 ->product('Dysmsapi')
                 // ->scheme('https') // https | http
                 ->version('2017-05-25')
+                ->host('dysmsapi.aliyuncs.com')
                 ->action('SendSms')
                 ->method('POST')
                 ->options([
